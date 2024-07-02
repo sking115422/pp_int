@@ -2,3 +2,7 @@ res_out_dir
 vis_out_dir
 old
 comp
+node_modules
+data
+logs
+vis
