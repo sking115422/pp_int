@@ -1,0 +1,10 @@
+google.com
+youtube.com
+facebook.com
+microsoft.com
+amazonaws.com
+twitter.com
+netflix.com
+baidu.com
+instagram.com
+linkedin.com

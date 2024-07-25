@@ -7,6 +7,11 @@ const logger = require('./logger');
 // Get URLs from command line arguments
 const urls = process.argv.slice(2);
 
+// Setting global variables
+const vp_width = 1920;
+const vp_height = 1080;
+const maxElementAreaPercentage = .75; // Define the maximum allowed percentage of the viewport area an element can occupy
+
 if (urls.length === 0) {
     logger.error('Please provide a list of URLs as command line arguments.');
     process.exit(1);
@@ -21,7 +26,7 @@ if (urls.length === 0) {
 
     const browser = await playwright.chromium.launch();
     const context = await browser.newContext({
-        viewport: { width: 1920, height: 1080 }
+        viewport: { width: vp_width, height: vp_height }
     });
     const page = await context.newPage();
 
@@ -65,13 +70,20 @@ if (urls.length === 0) {
                             };
                         });
                         if (boundingBox) {
-                            successfulClicks.push({
-                                x: boundingBox.x,
-                                y: boundingBox.y,
-                                width: boundingBox.width,
-                                height: boundingBox.height,
-                                ...attributes
-                            });
+                            // Calculate the element's area and compare it with the viewport's area
+                            const elementArea = boundingBox.width * boundingBox.height;
+                            const viewportArea = vp_width * vp_height;
+                            const elementAreaPercentage = (elementArea / viewportArea);
+
+                            if (elementAreaPercentage <= maxElementAreaPercentage) {
+                                successfulClicks.push({
+                                    x: boundingBox.x,
+                                    y: boundingBox.y,
+                                    width: boundingBox.width,
+                                    height: boundingBox.height,
+                                    ...attributes
+                                });
+                            }
                         }
                     }
                 }
@@ -103,7 +115,7 @@ async function isElementClickable(page, element) {
     // Check if the element is visible. An element is considered visible if it has a non-zero dimension and is not hidden via CSS.
     const isVisible = await element.isVisible();
 
-    // Check if the element is enabled. An element is considered enabled if it is not disabled
+    // Check if the element is enabled. An element is considered enabled if it is not disabled.
     const isEnabled = await element.isEnabled();
 
     // Check if the element has pointer events enabled. This CSS property determines if the element can be the target of mouse events (e.g., 'none' means it cannot be).
