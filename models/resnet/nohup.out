@@ -1,0 +1,1941 @@
+{
+ "cells": [
+  {
+   "cell_type": "markdown",
+   "id": "292ceb61",
+   "metadata": {
+    "tags": [
+     "papermill-error-cell-tag"
+    ]
+   },
+   "source": [
+    "<span style=\"color:red; font-family:Helvetica Neue, Helvetica, Arial, sans-serif; font-size:2em;\">An Exception was encountered at '<a href=\"#papermill-error-cell\">In [36]</a>'.</span>"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 1,
+   "id": "6e96e23b",
+   "metadata": {
+    "execution": {
+     "iopub.execute_input": "2024-07-25T05:33:06.799784Z",
+     "iopub.status.busy": "2024-07-25T05:33:06.799295Z",
+     "iopub.status.idle": "2024-07-25T05:33:08.779645Z",
+     "shell.execute_reply": "2024-07-25T05:33:08.777458Z"
+    },
+    "papermill": {
+     "duration": 1.985371,
+     "end_time": "2024-07-25T05:33:08.782211",
+     "exception": false,
+     "start_time": "2024-07-25T05:33:06.796840",
+     "status": "completed"
+    },
+    "tags": []
+   },
+   "outputs": [
+    {
+     "name": "stderr",
+     "output_type": "stream",
+     "text": [
+      "/home/user/miniconda3/envs/int_venv/lib/python3.8/site-packages/tqdm/auto.py:21: TqdmWarning: IProgress not found. Please update jupyter and ipywidgets. See https://ipywidgets.readthedocs.io/en/stable/user_install.html\n",
+      "  from .autonotebook import tqdm as notebook_tqdm\n"
+     ]
+    }
+   ],
+   "source": [
+    "import torch, torchvision\n",
+    "from torchvision import transforms\n",
+    "import numpy as np\n",
+    "import cv2\n",
+    "import os\n",
+    "import subprocess\n",
+    "import shutil\n",
+    "import json\n",
+    "import time\n",
+    "import re\n",
+    "import glob\n",
+    "from detectron2 import model_zoo\n",
+    "from detectron2.engine import DefaultPredictor\n",
+    "from detectron2.config import get_cfg\n",
+    "from detectron2.utils.logger import setup_logger\n",
+    "from detectron2.utils.visualizer import Visualizer\n",
+    "from detectron2.structures.instances import Instances\n",
+    "from multiprocessing import Process, Manager\n",
+    "import gc\n",
+    "from PIL import Image, ImageDraw, ImageFont\n",
+    "import nest_asyncio\n",
+    "import asyncio\n",
+    "from playwright.async_api import async_playwright\n"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 2,
+   "id": "e41957c1",
+   "metadata": {
+    "execution": {
+     "iopub.execute_input": "2024-07-25T05:33:08.784245Z",
+     "iopub.status.busy": "2024-07-25T05:33:08.783826Z",
+     "iopub.status.idle": "2024-07-25T05:33:08.792122Z",
+     "shell.execute_reply": "2024-07-25T05:33:08.791426Z"
+    },
+    "papermill": {
+     "duration": 0.011491,
+     "end_time": "2024-07-25T05:33:08.793910",
+     "exception": false,
+     "start_time": "2024-07-25T05:33:08.782419",
+     "status": "completed"
+    },
+    "tags": []
+   },
+   "outputs": [],
+   "source": [
+    "### PATHS\n",
+    "# Do not use directory with negatives\n",
+    "in_path = \"./test_urls.txt\"\n",
+    "inf_img_dir = \"./inf_imgs\"\n",
+    "res_out_dir = \"./res_out_dir\"\n",
+    "vis_out_dir = \"./res_out_dir/vis\"\n",
+    "# cat_path = \"/mnt/nis_lab_research/data/elem_cat/cat_neg_27.json\"\n",
+    "cat_path = \"/mnt/nis_lab_research/data/elem_cat/cat_neg_10.json\"\n",
+    "master_url_dict_path = '/mnt/nis_lab_research/data/top-1m/top-1m-mapping.json'\n",
+    "\n",
+    "\n",
+    "# OBJECT DETECTOR MODELS\n",
+    "# # 2 OD\n",
+    "od_paths = [\n",
+    "    (\"/mnt/nis_lab_research/data/coco_files/agg/class_2_rem/out/far_shah_b1-b5_b8_train_c0/model_final.pth\", 0.50), # small\n",
+    "    (\"/mnt/nis_lab_research/data/coco_files/agg/class_2_rem/out/far_shah_b1-b5_b8_train_c1/model_final.pth\", 0.75)  # large\n",
+    "]\n",
+    "\n",
+    "# # 10 OD\n",
+    "# od_paths = [\n",
+    "#     (\"/mnt/nis_lab_research/data/coco_files/agg/class_1_rem/out/far_shah_b1-b5_b8_train_c0/model_final.pth\", .75),\n",
+    "#     (\"/mnt/nis_lab_research/data/coco_files/agg/class_1_rem/out/far_shah_b1-b5_b8_train_c1/model_final.pth\", .75),\n",
+    "#     (\"/mnt/nis_lab_research/data/coco_files/agg/class_1_rem/out/far_shah_b1-b5_b8_train_c2/model_final.pth\", .75),\n",
+    "#     (\"/mnt/nis_lab_research/data/coco_files/agg/class_1_rem/out/far_shah_b1-b5_b8_train_c3/model_final.pth\", .75),\n",
+    "#     (\"/mnt/nis_lab_research/data/coco_files/agg/class_1_rem/out/far_shah_b1-b5_b8_train_c4/model_final.pth\", .75),\n",
+    "#     (\"/mnt/nis_lab_research/data/coco_files/agg/class_1_rem/out/far_shah_b1-b5_b8_train_c5/model_final.pth\", .75),\n",
+    "#     (\"/mnt/nis_lab_research/data/coco_files/agg/class_1_rem/out/far_shah_b1-b5_b8_train_c6/model_final.pth\", .75),\n",
+    "#     (\"/mnt/nis_lab_research/data/coco_files/agg/class_1_rem/out/far_shah_b1-b5_b8_train_c7/model_final.pth\", .75),\n",
+    "#     (\"/mnt/nis_lab_research/data/coco_files/agg/class_1_rem/out/far_shah_b1-b5_b8_train_c8/model_final.pth\", .75),\n",
+    "#     (\"/mnt/nis_lab_research/data/coco_files/agg/class_1_rem/out/far_shah_b1-b5_b8_train_c9/model_final.pth\", .75)\n",
+    "# ]\n",
+    "\n",
+    "# CLASSIFIER MODEL\n",
+    "# # 10 Class Agg + Neg\n",
+    "# class_path = \"/mnt/nis_lab_research/data/class_data/pth/far_shah_b1-b5_b8_train_c10_neg/model_final.pth\"\n",
+    "class_path = \"/mnt/nis_lab_research/data/class_data/pth/full_train_neg_c10/model_final.pth\"\n",
+    "# 27 Class + Neg\n",
+    "# class_path = \"/mnt/nis_lab_research/data/class_data/pth/far_shah_b1-b5_b8_train_neg/model_final.pth\"\n",
+    "\n",
+    "# ADJUSTABLES\n",
+    "bg_color = \"white\"\n",
+    "# Possibly adjust padding to fixed value in the future\n",
+    "padding = 0.15\n",
+    "border = 0\n",
+    "\n",
+    "# Common element that are nested will be denested by default\n",
+    "denest = True\n",
+    "denest_thold = 0.20\n",
+    "\n",
+    "keep_clickable_elems_only = True\n",
+    "\n",
+    "# If True negatively identified cases will be removed before calulating metrics\n",
+    "remove_neg = True\n",
+    "\n",
+    "\n",
+    "iou_thold = .5\n",
+    "neg_class_name = \"Random\"\n"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 3,
+   "id": "63aebb30",
+   "metadata": {
+    "execution": {
+     "iopub.execute_input": "2024-07-25T05:33:08.795954Z",
+     "iopub.status.busy": "2024-07-25T05:33:08.795034Z",
+     "iopub.status.idle": "2024-07-25T05:33:08.799928Z",
+     "shell.execute_reply": "2024-07-25T05:33:08.798922Z"
+    },
+    "papermill": {
+     "duration": 0.009613,
+     "end_time": "2024-07-25T05:33:08.803657",
+     "exception": false,
+     "start_time": "2024-07-25T05:33:08.794044",
+     "status": "completed"
+    },
+    "tags": []
+   },
+   "outputs": [],
+   "source": [
+    "# Setting CUDA devices as visible\n",
+    "cuda_devices = \"0,1\"\n",
+    "os.environ[\"CUDA_VISIBLE_DEVICES\"] = cuda_devices"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 4,
+   "id": "09757151",
+   "metadata": {
+    "execution": {
+     "iopub.execute_input": "2024-07-25T05:33:08.805705Z",
+     "iopub.status.busy": "2024-07-25T05:33:08.805345Z",
+     "iopub.status.idle": "2024-07-25T05:33:08.866668Z",
+     "shell.execute_reply": "2024-07-25T05:33:08.865188Z"
+    },
+    "papermill": {
+     "duration": 0.066987,
+     "end_time": "2024-07-25T05:33:08.871002",
+     "exception": false,
+     "start_time": "2024-07-25T05:33:08.804015",
+     "status": "completed"
+    },
+    "tags": []
+   },
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "Available CUDA devices:\n",
+      "  0: NVIDIA GeForce RTX 3090\n",
+      "  1: NVIDIA GeForce RTX 3090\n"
+     ]
+    }
+   ],
+   "source": [
+    "available_devices = [torch.cuda.get_device_name(i) for i in range(torch.cuda.device_count())]\n",
+    "print(\"Available CUDA devices:\")\n",
+    "for i, device_name in enumerate(available_devices):\n",
+    "    print(f\"  {i}: {device_name}\")"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 5,
+   "id": "830aed21",
+   "metadata": {
+    "execution": {
+     "iopub.execute_input": "2024-07-25T05:33:08.873105Z",
+     "iopub.status.busy": "2024-07-25T05:33:08.872866Z",
+     "iopub.status.idle": "2024-07-25T05:33:08.956389Z",
+     "shell.execute_reply": "2024-07-25T05:33:08.954909Z"
+    },
+    "papermill": {
+     "duration": 0.089698,
+     "end_time": "2024-07-25T05:33:08.961068",
+     "exception": false,
+     "start_time": "2024-07-25T05:33:08.871370",
+     "status": "completed"
+    },
+    "tags": []
+   },
+   "outputs": [
+    {
+     "data": {
+      "text/plain": [
+       "0"
+      ]
+     },
+     "execution_count": 5,
+     "metadata": {},
+     "output_type": "execute_result"
+    }
+   ],
+   "source": [
+    "torch.cuda.empty_cache()\n",
+    "gc.collect()"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 6,
+   "id": "83b1fd6e",
+   "metadata": {
+    "execution": {
+     "iopub.execute_input": "2024-07-25T05:33:08.963119Z",
+     "iopub.status.busy": "2024-07-25T05:33:08.962867Z",
+     "iopub.status.idle": "2024-07-25T05:33:08.968706Z",
+     "shell.execute_reply": "2024-07-25T05:33:08.967498Z"
+    },
+    "papermill": {
+     "duration": 0.011001,
+     "end_time": "2024-07-25T05:33:08.972431",
+     "exception": false,
+     "start_time": "2024-07-25T05:33:08.961430",
+     "status": "completed"
+    },
+    "tags": []
+   },
+   "outputs": [],
+   "source": [
+    "def get_soi(str1, start_char, end_char):\n",
+    "    str1 = str(str1)\n",
+    "    offst = len(start_char)\n",
+    "    ind1 = str1.find(start_char)\n",
+    "    ind2 = str1.find(end_char)\n",
+    "    s_str = str1[ind1+offst:ind2]\n",
+    "    return s_str"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 7,
+   "id": "a9aa255a",
+   "metadata": {
+    "execution": {
+     "iopub.execute_input": "2024-07-25T05:33:08.974456Z",
+     "iopub.status.busy": "2024-07-25T05:33:08.974119Z",
+     "iopub.status.idle": "2024-07-25T05:33:08.979833Z",
+     "shell.execute_reply": "2024-07-25T05:33:08.978446Z"
+    },
+    "papermill": {
+     "duration": 0.010629,
+     "end_time": "2024-07-25T05:33:08.983423",
+     "exception": false,
+     "start_time": "2024-07-25T05:33:08.972794",
+     "status": "completed"
+    },
+    "tags": []
+   },
+   "outputs": [],
+   "source": [
+    "def convert_bbox_xywh(b):\n",
+    "    x1, y1, x2, y2 = b\n",
+    "    x = x1\n",
+    "    y = y1\n",
+    "    w = x2 - x1\n",
+    "    h = y2 - y1\n",
+    "    return [x, y, w, h]"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 8,
+   "id": "3f8b98da",
+   "metadata": {
+    "execution": {
+     "iopub.execute_input": "2024-07-25T05:33:08.985835Z",
+     "iopub.status.busy": "2024-07-25T05:33:08.985456Z",
+     "iopub.status.idle": "2024-07-25T05:33:08.995938Z",
+     "shell.execute_reply": "2024-07-25T05:33:08.994602Z"
+    },
+    "papermill": {
+     "duration": 0.015868,
+     "end_time": "2024-07-25T05:33:08.999654",
+     "exception": false,
+     "start_time": "2024-07-25T05:33:08.983786",
+     "status": "completed"
+    },
+    "tags": []
+   },
+   "outputs": [],
+   "source": [
+    "\n",
+    "def createDataDict (fn, outputs):\n",
+    "    img_shape = list(outputs[\"instances\"].image_size)\n",
+    "    img_h = int(img_shape[0])\n",
+    "    img_w = int(img_shape[1])\n",
+    "    ann_list = []\n",
+    "\n",
+    "    class_list = get_soi(outputs[\"instances\"].pred_classes, \"[\", \"]\").split(\",\")\n",
+    "    \n",
+    "    if class_list[0] != \"\":\n",
+    "\n",
+    "        class_list_new = []\n",
+    "        for each in class_list:\n",
+    "            if each.strip().isdigit():\n",
+    "                class_list_new.append(int(each.strip()))\n",
+    "            else:\n",
+    "                print(f\"Invalid class ID: {each}\")\n",
+    "\n",
+    "        bbox_list = get_soi(outputs[\"instances\"].pred_boxes, \"[[\", \"]]\").split(\"]\")\n",
+    "        bbox_list_new = []\n",
+    "        for each in bbox_list:\n",
+    "            bbox = re.sub(\"['[,\\n]\", \"\", each).split(\" \")\n",
+    "            bbox_new = []\n",
+    "            for item in bbox:\n",
+    "                if item != \"\":\n",
+    "                    bbox_new.append(float(item))\n",
+    "            bbox_new = convert_bbox_xywh(bbox_new)\n",
+    "            bbox_list_new.append(bbox_new)\n",
+    "\n",
+    "        for i in range(0, len(class_list)):\n",
+    "            # og was \"bbox_mode\": \"<BoxMode.XYWH_ABS: 1>\"\n",
+    "            ann_list.append({\"iscrowd\": 0, \"bbox\": bbox_list_new[i], \"category_id\": class_list_new[i], \"bbox_mode\": 0})\n",
+    "    \n",
+    "    data_dict = {\n",
+    "        \"file_name\": fn,\n",
+    "        \"height\": img_h,\n",
+    "        \"width\": img_w, \n",
+    "        \"annotations\": ann_list\n",
+    "    }\n",
+    " \n",
+    "    return data_dict"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 9,
+   "id": "666c035c",
+   "metadata": {
+    "execution": {
+     "iopub.execute_input": "2024-07-25T05:33:09.001602Z",
+     "iopub.status.busy": "2024-07-25T05:33:09.001364Z",
+     "iopub.status.idle": "2024-07-25T05:33:09.008475Z",
+     "shell.execute_reply": "2024-07-25T05:33:09.007351Z"
+    },
+    "papermill": {
+     "duration": 0.012397,
+     "end_time": "2024-07-25T05:33:09.012417",
+     "exception": false,
+     "start_time": "2024-07-25T05:33:09.000020",
+     "status": "completed"
+    },
+    "tags": []
+   },
+   "outputs": [],
+   "source": [
+    "def crop_image(file_path, bounding_box, padding):\n",
+    "    \n",
+    "    with Image.open(file_path) as img:\n",
+    "        \n",
+    "        x_min, y_min, width, height = bounding_box\n",
+    "\n",
+    "        # Calculate padding in pixels\n",
+    "        pad_width = int(width * padding)\n",
+    "        pad_height = int(height * padding)\n",
+    "\n",
+    "        # Adjust the bounding box with padding\n",
+    "        x_min = max(x_min - pad_width, 0)\n",
+    "        y_min = max(y_min - pad_height, 0)\n",
+    "        x1 = min(x_min + width + 2 * pad_width, img.width)\n",
+    "        y1 = min(y_min + height + 2 * pad_height, img.height)\n",
+    "        \n",
+    "        cropped_img = img.crop((x_min, y_min, x1, y1))\n",
+    "        \n",
+    "        return cropped_img"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 10,
+   "id": "fb3ea07d",
+   "metadata": {
+    "execution": {
+     "iopub.execute_input": "2024-07-25T05:33:09.014451Z",
+     "iopub.status.busy": "2024-07-25T05:33:09.014114Z",
+     "iopub.status.idle": "2024-07-25T05:33:09.020563Z",
+     "shell.execute_reply": "2024-07-25T05:33:09.019165Z"
+    },
+    "papermill": {
+     "duration": 0.011665,
+     "end_time": "2024-07-25T05:33:09.024445",
+     "exception": false,
+     "start_time": "2024-07-25T05:33:09.012780",
+     "status": "completed"
+    },
+    "tags": []
+   },
+   "outputs": [],
+   "source": [
+    "def paste_to_bg(image, background_color, bg_width, bg_height):\n",
+    "    \n",
+    "    # Create a new image with the specified background color and dimensions\n",
+    "    background = Image.new('RGB', (bg_width, bg_height), background_color)\n",
+    "\n",
+    "    # Calculate the position to paste the image so it's centered\n",
+    "    x = (bg_width - image.width) // 2\n",
+    "    y = (bg_height - image.height) // 2\n",
+    "\n",
+    "    # Paste the image onto the background\n",
+    "    background.paste(image, (x, y), image if image.mode == 'RGBA' else None)\n",
+    "\n",
+    "    return background"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 11,
+   "id": "a1ba7278",
+   "metadata": {
+    "execution": {
+     "iopub.execute_input": "2024-07-25T05:33:09.026368Z",
+     "iopub.status.busy": "2024-07-25T05:33:09.026132Z",
+     "iopub.status.idle": "2024-07-25T05:33:09.032451Z",
+     "shell.execute_reply": "2024-07-25T05:33:09.031176Z"
+    },
+    "papermill": {
+     "duration": 0.011471,
+     "end_time": "2024-07-25T05:33:09.036279",
+     "exception": false,
+     "start_time": "2024-07-25T05:33:09.024808",
+     "status": "completed"
+    },
+    "tags": []
+   },
+   "outputs": [],
+   "source": [
+    "def resize_ar_lock(img, target_size):\n",
+    "\n",
+    "    original_width, original_height = img.size\n",
+    "    target_width, target_height = target_size\n",
+    "\n",
+    "    # Calculate scaling factor\n",
+    "    scaling_factor = min(target_width / original_width, target_height / original_height)\n",
+    "\n",
+    "    # Calculate new dimensions\n",
+    "    new_width = max(int(original_width * scaling_factor), 1)\n",
+    "    new_height = max(int(original_height * scaling_factor), 1)\n",
+    "\n",
+    "    # Resize the image\n",
+    "    resized_img = img.resize((new_width, new_height))\n",
+    "\n",
+    "    return resized_img"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 12,
+   "id": "f095f46c",
+   "metadata": {
+    "execution": {
+     "iopub.execute_input": "2024-07-25T05:33:09.038191Z",
+     "iopub.status.busy": "2024-07-25T05:33:09.037956Z",
+     "iopub.status.idle": "2024-07-25T05:33:09.043636Z",
+     "shell.execute_reply": "2024-07-25T05:33:09.042303Z"
+    },
+    "papermill": {
+     "duration": 0.010891,
+     "end_time": "2024-07-25T05:33:09.047531",
+     "exception": false,
+     "start_time": "2024-07-25T05:33:09.036640",
+     "status": "completed"
+    },
+    "tags": []
+   },
+   "outputs": [],
+   "source": [
+    "def gen_rand_str(length):\n",
+    "    characters = string.ascii_letters + string.digits\n",
+    "    random_string = ''.join(random.choice(characters) for i in range(length))\n",
+    "    return random_string"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 13,
+   "id": "5c344389",
+   "metadata": {
+    "execution": {
+     "iopub.execute_input": "2024-07-25T05:33:09.049966Z",
+     "iopub.status.busy": "2024-07-25T05:33:09.049477Z",
+     "iopub.status.idle": "2024-07-25T05:33:09.056521Z",
+     "shell.execute_reply": "2024-07-25T05:33:09.055171Z"
+    },
+    "papermill": {
+     "duration": 0.012534,
+     "end_time": "2024-07-25T05:33:09.060428",
+     "exception": false,
+     "start_time": "2024-07-25T05:33:09.047894",
+     "status": "completed"
+    },
+    "tags": []
+   },
+   "outputs": [],
+   "source": [
+    "transform = transforms.Compose([\n",
+    "    transforms.Resize((224, 224)),\n",
+    "    transforms.ToTensor(),\n",
+    "    transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])\n",
+    "])"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 14,
+   "id": "0a31b971",
+   "metadata": {
+    "execution": {
+     "iopub.execute_input": "2024-07-25T05:33:09.062825Z",
+     "iopub.status.busy": "2024-07-25T05:33:09.062447Z",
+     "iopub.status.idle": "2024-07-25T05:33:09.073113Z",
+     "shell.execute_reply": "2024-07-25T05:33:09.071751Z"
+    },
+    "papermill": {
+     "duration": 0.016243,
+     "end_time": "2024-07-25T05:33:09.077033",
+     "exception": false,
+     "start_time": "2024-07-25T05:33:09.060790",
+     "status": "completed"
+    },
+    "tags": []
+   },
+   "outputs": [],
+   "source": [
+    "def process_image(img_fp, bbox_list, padding, bg_color, border):\n",
+    "    \n",
+    "    # Create an empty list to store processed images\n",
+    "    processed_images = []\n",
+    "\n",
+    "    for j, bbox in enumerate(bbox_list):\n",
+    "\n",
+    "        try:\n",
+    "            elem_img = crop_image(img_fp, bbox, padding)\n",
+    "            e_w = elem_img.size[0]\n",
+    "            e_h = elem_img.size[1]\n",
+    "\n",
+    "            if e_w < e_h:\n",
+    "                elem_img = paste_to_bg(elem_img, bg_color, e_h + border, e_h + border)\n",
+    "            elif e_w > e_h:\n",
+    "                elem_img = paste_to_bg(elem_img, bg_color, e_w + border, e_w + border)\n",
+    "                \n",
+    "            # elem_img = transform(elem_img)\n",
+    "            processed_images.append(elem_img)\n",
+    "\n",
+    "        except Exception as e:\n",
+    "            print(img_fp)\n",
+    "            print(e)\n",
+    "\n",
+    "    # Return the list of processed images\n",
+    "    return processed_images\n"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 15,
+   "id": "d7b9c839",
+   "metadata": {
+    "execution": {
+     "iopub.execute_input": "2024-07-25T05:33:09.079443Z",
+     "iopub.status.busy": "2024-07-25T05:33:09.078881Z",
+     "iopub.status.idle": "2024-07-25T05:33:09.089624Z",
+     "shell.execute_reply": "2024-07-25T05:33:09.088079Z"
+    },
+    "papermill": {
+     "duration": 0.016222,
+     "end_time": "2024-07-25T05:33:09.093638",
+     "exception": false,
+     "start_time": "2024-07-25T05:33:09.077416",
+     "status": "completed"
+    },
+    "tags": []
+   },
+   "outputs": [],
+   "source": [
+    "def draw_bounding_boxes(image_path, bbox_list, label_list, output_path, color = 'red', thickness=2):\n",
+    "    # Open the image\n",
+    "    image = Image.open(image_path)\n",
+    "    draw = ImageDraw.Draw(image)\n",
+    "\n",
+    "    # Load a font\n",
+    "    font = ImageFont.load_default()\n",
+    "\n",
+    "    # Draw bounding boxes and labels\n",
+    "    for bbox, label in zip(bbox_list, label_list):\n",
+    "        x, y, w, h = bbox\n",
+    "        draw.rectangle([x, y, x+w, y+h], outline=color, width = 2)\n",
+    "        draw.text((x, y), label, fill=color, font=font)\n",
+    "\n",
+    "    # Save the new image\n",
+    "    image.save(output_path)"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 16,
+   "id": "2b36089e",
+   "metadata": {
+    "execution": {
+     "iopub.execute_input": "2024-07-25T05:33:09.096162Z",
+     "iopub.status.busy": "2024-07-25T05:33:09.095738Z",
+     "iopub.status.idle": "2024-07-25T05:33:09.105652Z",
+     "shell.execute_reply": "2024-07-25T05:33:09.104172Z"
+    },
+    "papermill": {
+     "duration": 0.015772,
+     "end_time": "2024-07-25T05:33:09.109771",
+     "exception": false,
+     "start_time": "2024-07-25T05:33:09.093999",
+     "status": "completed"
+    },
+    "tags": []
+   },
+   "outputs": [],
+   "source": [
+    "def draw_bounding_boxes_in_mem(image, bbox_list, label_list, color='red', thickness=2):\n",
+    "    draw = ImageDraw.Draw(image)\n",
+    "    font = ImageFont.load_default()\n",
+    "\n",
+    "    for bbox, label in zip(bbox_list, label_list):\n",
+    "        x, y, w, h = bbox\n",
+    "        draw.rectangle([x, y, x + w, y + h], outline=color, width=thickness)\n",
+    "        draw.text((x, y), label, fill=color, font=font)\n",
+    "\n",
+    "    return image"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 17,
+   "id": "ed32b100",
+   "metadata": {
+    "execution": {
+     "iopub.execute_input": "2024-07-25T05:33:09.112461Z",
+     "iopub.status.busy": "2024-07-25T05:33:09.111987Z",
+     "iopub.status.idle": "2024-07-25T05:33:09.119812Z",
+     "shell.execute_reply": "2024-07-25T05:33:09.118352Z"
+    },
+    "papermill": {
+     "duration": 0.013661,
+     "end_time": "2024-07-25T05:33:09.123798",
+     "exception": false,
+     "start_time": "2024-07-25T05:33:09.110137",
+     "status": "completed"
+    },
+    "tags": []
+   },
+   "outputs": [],
+   "source": [
+    "def merge_outputs(outputs):\n",
+    "    l = []\n",
+    "    for out in outputs:\n",
+    "        l.append(out[\"instances\"])\n",
+    "    new = Instances.cat(l)\n",
+    "    return {\"instances\": new}"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 18,
+   "id": "484c61a9",
+   "metadata": {
+    "execution": {
+     "iopub.execute_input": "2024-07-25T05:33:09.126576Z",
+     "iopub.status.busy": "2024-07-25T05:33:09.126049Z",
+     "iopub.status.idle": "2024-07-25T05:33:09.134059Z",
+     "shell.execute_reply": "2024-07-25T05:33:09.132532Z"
+    },
+    "papermill": {
+     "duration": 0.013961,
+     "end_time": "2024-07-25T05:33:09.138128",
+     "exception": false,
+     "start_time": "2024-07-25T05:33:09.124167",
+     "status": "completed"
+    },
+    "tags": []
+   },
+   "outputs": [],
+   "source": [
+    "def keep_all_but_first_part(s):\n",
+    "    parts = s.split('-')\n",
+    "    if len(parts) > 1:\n",
+    "        return '-'.join(parts[1:])\n",
+    "    return s"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 19,
+   "id": "1c4ceddd",
+   "metadata": {
+    "execution": {
+     "iopub.execute_input": "2024-07-25T05:33:09.141023Z",
+     "iopub.status.busy": "2024-07-25T05:33:09.140486Z",
+     "iopub.status.idle": "2024-07-25T05:33:09.151965Z",
+     "shell.execute_reply": "2024-07-25T05:33:09.149809Z"
+    },
+    "papermill": {
+     "duration": 0.017829,
+     "end_time": "2024-07-25T05:33:09.156328",
+     "exception": false,
+     "start_time": "2024-07-25T05:33:09.138499",
+     "status": "completed"
+    },
+    "tags": []
+   },
+   "outputs": [],
+   "source": [
+    "if os.path.exists(res_out_dir):\n",
+    "    shutil.rmtree(res_out_dir)\n",
+    "os.makedirs(vis_out_dir)"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 20,
+   "id": "61773ca0",
+   "metadata": {
+    "execution": {
+     "iopub.execute_input": "2024-07-25T05:33:09.159584Z",
+     "iopub.status.busy": "2024-07-25T05:33:09.158984Z",
+     "iopub.status.idle": "2024-07-25T05:33:18.183001Z",
+     "shell.execute_reply": "2024-07-25T05:33:18.181467Z"
+    },
+    "papermill": {
+     "duration": 9.030533,
+     "end_time": "2024-07-25T05:33:18.187231",
+     "exception": false,
+     "start_time": "2024-07-25T05:33:09.156698",
+     "status": "completed"
+    },
+    "tags": []
+   },
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "\u001b[32m[07/25 01:33:15 d2.checkpoint.detection_checkpoint]: \u001b[0m[DetectionCheckpointer] Loading from /mnt/nis_lab_research/data/coco_files/agg/class_2_rem/out/far_shah_b1-b5_b8_train_c0/model_final.pth ...\n"
+     ]
+    },
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "\u001b[32m[07/25 01:33:17 d2.checkpoint.detection_checkpoint]: \u001b[0m[DetectionCheckpointer] Loading from /mnt/nis_lab_research/data/coco_files/agg/class_2_rem/out/far_shah_b1-b5_b8_train_c1/model_final.pth ...\n"
+     ]
+    }
+   ],
+   "source": [
+    "obj_det_pred_list = []\n",
+    "\n",
+    "for od in od_paths:\n",
+    "    \n",
+    "    setup_logger()\n",
+    "    cfg = get_cfg()\n",
+    "    cfg.merge_from_file(model_zoo.get_config_file(\"COCO-Detection/faster_rcnn_X_101_32x8d_FPN_3x.yaml\"))\n",
+    "    # cfg.MODEL.WEIGHTS = os.path.join(\"/home/dtron2_user/ls_dtron2_full/model/output\", \"model_final.pth\")\n",
+    "    cfg.MODEL.WEIGHTS = od[0]\n",
+    "    cfg.MODEL.ROI_HEADS.NUM_CLASSES = 1\n",
+    "    cfg.MODEL.ROI_HEADS.SCORE_THRESH_TEST = od[1] \n",
+    "    obj_det_pred = DefaultPredictor(cfg)\n",
+    "    obj_det_pred_list.append(obj_det_pred)"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 21,
+   "id": "dec84e0a",
+   "metadata": {
+    "execution": {
+     "iopub.execute_input": "2024-07-25T05:33:18.189673Z",
+     "iopub.status.busy": "2024-07-25T05:33:18.189409Z",
+     "iopub.status.idle": "2024-07-25T05:33:18.278587Z",
+     "shell.execute_reply": "2024-07-25T05:33:18.277144Z"
+    },
+    "papermill": {
+     "duration": 0.094876,
+     "end_time": "2024-07-25T05:33:18.282480",
+     "exception": false,
+     "start_time": "2024-07-25T05:33:18.187604",
+     "status": "completed"
+    },
+    "tags": []
+   },
+   "outputs": [
+    {
+     "data": {
+      "text/plain": [
+       "DataParallel(\n",
+       "  (module): ResNet(\n",
+       "    (conv1): Conv2d(3, 64, kernel_size=(7, 7), stride=(2, 2), padding=(3, 3), bias=False)\n",
+       "    (bn1): BatchNorm2d(64, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)\n",
+       "    (relu): ReLU(inplace=True)\n",
+       "    (maxpool): MaxPool2d(kernel_size=3, stride=2, padding=1, dilation=1, ceil_mode=False)\n",
+       "    (layer1): Sequential(\n",
+       "      (0): Bottleneck(\n",
+       "        (conv1): Conv2d(64, 64, kernel_size=(1, 1), stride=(1, 1), bias=False)\n",
+       "        (bn1): BatchNorm2d(64, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)\n",
+       "        (conv2): Conv2d(64, 64, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1), bias=False)\n",
+       "        (bn2): BatchNorm2d(64, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)\n",
+       "        (conv3): Conv2d(64, 256, kernel_size=(1, 1), stride=(1, 1), bias=False)\n",
+       "        (bn3): BatchNorm2d(256, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)\n",
+       "        (relu): ReLU(inplace=True)\n",
+       "        (downsample): Sequential(\n",
+       "          (0): Conv2d(64, 256, kernel_size=(1, 1), stride=(1, 1), bias=False)\n",
+       "          (1): BatchNorm2d(256, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)\n",
+       "        )\n",
+       "      )\n",
+       "      (1): Bottleneck(\n",
+       "        (conv1): Conv2d(256, 64, kernel_size=(1, 1), stride=(1, 1), bias=False)\n",
+       "        (bn1): BatchNorm2d(64, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)\n",
+       "        (conv2): Conv2d(64, 64, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1), bias=False)\n",
+       "        (bn2): BatchNorm2d(64, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)\n",
+       "        (conv3): Conv2d(64, 256, kernel_size=(1, 1), stride=(1, 1), bias=False)\n",
+       "        (bn3): BatchNorm2d(256, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)\n",
+       "        (relu): ReLU(inplace=True)\n",
+       "      )\n",
+       "      (2): Bottleneck(\n",
+       "        (conv1): Conv2d(256, 64, kernel_size=(1, 1), stride=(1, 1), bias=False)\n",
+       "        (bn1): BatchNorm2d(64, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)\n",
+       "        (conv2): Conv2d(64, 64, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1), bias=False)\n",
+       "        (bn2): BatchNorm2d(64, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)\n",
+       "        (conv3): Conv2d(64, 256, kernel_size=(1, 1), stride=(1, 1), bias=False)\n",
+       "        (bn3): BatchNorm2d(256, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)\n",
+       "        (relu): ReLU(inplace=True)\n",
+       "      )\n",
+       "    )\n",
+       "    (layer2): Sequential(\n",
+       "      (0): Bottleneck(\n",
+       "        (conv1): Conv2d(256, 128, kernel_size=(1, 1), stride=(1, 1), bias=False)\n",
+       "        (bn1): BatchNorm2d(128, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)\n",
+       "        (conv2): Conv2d(128, 128, kernel_size=(3, 3), stride=(2, 2), padding=(1, 1), bias=False)\n",
+       "        (bn2): BatchNorm2d(128, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)\n",
+       "        (conv3): Conv2d(128, 512, kernel_size=(1, 1), stride=(1, 1), bias=False)\n",
+       "        (bn3): BatchNorm2d(512, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)\n",
+       "        (relu): ReLU(inplace=True)\n",
+       "        (downsample): Sequential(\n",
+       "          (0): Conv2d(256, 512, kernel_size=(1, 1), stride=(2, 2), bias=False)\n",
+       "          (1): BatchNorm2d(512, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)\n",
+       "        )\n",
+       "      )\n",
+       "      (1): Bottleneck(\n",
+       "        (conv1): Conv2d(512, 128, kernel_size=(1, 1), stride=(1, 1), bias=False)\n",
+       "        (bn1): BatchNorm2d(128, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)\n",
+       "        (conv2): Conv2d(128, 128, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1), bias=False)\n",
+       "        (bn2): BatchNorm2d(128, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)\n",
+       "        (conv3): Conv2d(128, 512, kernel_size=(1, 1), stride=(1, 1), bias=False)\n",
+       "        (bn3): BatchNorm2d(512, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)\n",
+       "        (relu): ReLU(inplace=True)\n",
+       "      )\n",
+       "      (2): Bottleneck(\n",
+       "        (conv1): Conv2d(512, 128, kernel_size=(1, 1), stride=(1, 1), bias=False)\n",
+       "        (bn1): BatchNorm2d(128, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)\n",
+       "        (conv2): Conv2d(128, 128, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1), bias=False)\n",
+       "        (bn2): BatchNorm2d(128, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)\n",
+       "        (conv3): Conv2d(128, 512, kernel_size=(1, 1), stride=(1, 1), bias=False)\n",
+       "        (bn3): BatchNorm2d(512, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)\n",
+       "        (relu): ReLU(inplace=True)\n",
+       "      )\n",
+       "      (3): Bottleneck(\n",
+       "        (conv1): Conv2d(512, 128, kernel_size=(1, 1), stride=(1, 1), bias=False)\n",
+       "        (bn1): BatchNorm2d(128, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)\n",
+       "        (conv2): Conv2d(128, 128, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1), bias=False)\n",
+       "        (bn2): BatchNorm2d(128, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)\n",
+       "        (conv3): Conv2d(128, 512, kernel_size=(1, 1), stride=(1, 1), bias=False)\n",
+       "        (bn3): BatchNorm2d(512, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)\n",
+       "        (relu): ReLU(inplace=True)\n",
+       "      )\n",
+       "    )\n",
+       "    (layer3): Sequential(\n",
+       "      (0): Bottleneck(\n",
+       "        (conv1): Conv2d(512, 256, kernel_size=(1, 1), stride=(1, 1), bias=False)\n",
+       "        (bn1): BatchNorm2d(256, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)\n",
+       "        (conv2): Conv2d(256, 256, kernel_size=(3, 3), stride=(2, 2), padding=(1, 1), bias=False)\n",
+       "        (bn2): BatchNorm2d(256, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)\n",
+       "        (conv3): Conv2d(256, 1024, kernel_size=(1, 1), stride=(1, 1), bias=False)\n",
+       "        (bn3): BatchNorm2d(1024, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)\n",
+       "        (relu): ReLU(inplace=True)\n",
+       "        (downsample): Sequential(\n",
+       "          (0): Conv2d(512, 1024, kernel_size=(1, 1), stride=(2, 2), bias=False)\n",
+       "          (1): BatchNorm2d(1024, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)\n",
+       "        )\n",
+       "      )\n",
+       "      (1): Bottleneck(\n",
+       "        (conv1): Conv2d(1024, 256, kernel_size=(1, 1), stride=(1, 1), bias=False)\n",
+       "        (bn1): BatchNorm2d(256, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)\n",
+       "        (conv2): Conv2d(256, 256, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1), bias=False)\n",
+       "        (bn2): BatchNorm2d(256, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)\n",
+       "        (conv3): Conv2d(256, 1024, kernel_size=(1, 1), stride=(1, 1), bias=False)\n",
+       "        (bn3): BatchNorm2d(1024, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)\n",
+       "        (relu): ReLU(inplace=True)\n",
+       "      )\n",
+       "      (2): Bottleneck(\n",
+       "        (conv1): Conv2d(1024, 256, kernel_size=(1, 1), stride=(1, 1), bias=False)\n",
+       "        (bn1): BatchNorm2d(256, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)\n",
+       "        (conv2): Conv2d(256, 256, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1), bias=False)\n",
+       "        (bn2): BatchNorm2d(256, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)\n",
+       "        (conv3): Conv2d(256, 1024, kernel_size=(1, 1), stride=(1, 1), bias=False)\n",
+       "        (bn3): BatchNorm2d(1024, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)\n",
+       "        (relu): ReLU(inplace=True)\n",
+       "      )\n",
+       "      (3): Bottleneck(\n",
+       "        (conv1): Conv2d(1024, 256, kernel_size=(1, 1), stride=(1, 1), bias=False)\n",
+       "        (bn1): BatchNorm2d(256, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)\n",
+       "        (conv2): Conv2d(256, 256, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1), bias=False)\n",
+       "        (bn2): BatchNorm2d(256, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)\n",
+       "        (conv3): Conv2d(256, 1024, kernel_size=(1, 1), stride=(1, 1), bias=False)\n",
+       "        (bn3): BatchNorm2d(1024, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)\n",
+       "        (relu): ReLU(inplace=True)\n",
+       "      )\n",
+       "      (4): Bottleneck(\n",
+       "        (conv1): Conv2d(1024, 256, kernel_size=(1, 1), stride=(1, 1), bias=False)\n",
+       "        (bn1): BatchNorm2d(256, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)\n",
+       "        (conv2): Conv2d(256, 256, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1), bias=False)\n",
+       "        (bn2): BatchNorm2d(256, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)\n",
+       "        (conv3): Conv2d(256, 1024, kernel_size=(1, 1), stride=(1, 1), bias=False)\n",
+       "        (bn3): BatchNorm2d(1024, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)\n",
+       "        (relu): ReLU(inplace=True)\n",
+       "      )\n",
+       "      (5): Bottleneck(\n",
+       "        (conv1): Conv2d(1024, 256, kernel_size=(1, 1), stride=(1, 1), bias=False)\n",
+       "        (bn1): BatchNorm2d(256, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)\n",
+       "        (conv2): Conv2d(256, 256, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1), bias=False)\n",
+       "        (bn2): BatchNorm2d(256, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)\n",
+       "        (conv3): Conv2d(256, 1024, kernel_size=(1, 1), stride=(1, 1), bias=False)\n",
+       "        (bn3): BatchNorm2d(1024, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)\n",
+       "        (relu): ReLU(inplace=True)\n",
+       "      )\n",
+       "    )\n",
+       "    (layer4): Sequential(\n",
+       "      (0): Bottleneck(\n",
+       "        (conv1): Conv2d(1024, 512, kernel_size=(1, 1), stride=(1, 1), bias=False)\n",
+       "        (bn1): BatchNorm2d(512, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)\n",
+       "        (conv2): Conv2d(512, 512, kernel_size=(3, 3), stride=(2, 2), padding=(1, 1), bias=False)\n",
+       "        (bn2): BatchNorm2d(512, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)\n",
+       "        (conv3): Conv2d(512, 2048, kernel_size=(1, 1), stride=(1, 1), bias=False)\n",
+       "        (bn3): BatchNorm2d(2048, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)\n",
+       "        (relu): ReLU(inplace=True)\n",
+       "        (downsample): Sequential(\n",
+       "          (0): Conv2d(1024, 2048, kernel_size=(1, 1), stride=(2, 2), bias=False)\n",
+       "          (1): BatchNorm2d(2048, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)\n",
+       "        )\n",
+       "      )\n",
+       "      (1): Bottleneck(\n",
+       "        (conv1): Conv2d(2048, 512, kernel_size=(1, 1), stride=(1, 1), bias=False)\n",
+       "        (bn1): BatchNorm2d(512, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)\n",
+       "        (conv2): Conv2d(512, 512, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1), bias=False)\n",
+       "        (bn2): BatchNorm2d(512, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)\n",
+       "        (conv3): Conv2d(512, 2048, kernel_size=(1, 1), stride=(1, 1), bias=False)\n",
+       "        (bn3): BatchNorm2d(2048, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)\n",
+       "        (relu): ReLU(inplace=True)\n",
+       "      )\n",
+       "      (2): Bottleneck(\n",
+       "        (conv1): Conv2d(2048, 512, kernel_size=(1, 1), stride=(1, 1), bias=False)\n",
+       "        (bn1): BatchNorm2d(512, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)\n",
+       "        (conv2): Conv2d(512, 512, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1), bias=False)\n",
+       "        (bn2): BatchNorm2d(512, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)\n",
+       "        (conv3): Conv2d(512, 2048, kernel_size=(1, 1), stride=(1, 1), bias=False)\n",
+       "        (bn3): BatchNorm2d(2048, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)\n",
+       "        (relu): ReLU(inplace=True)\n",
+       "      )\n",
+       "    )\n",
+       "    (avgpool): AdaptiveAvgPool2d(output_size=(1, 1))\n",
+       "    (fc): Linear(in_features=2048, out_features=11, bias=True)\n",
+       "  )\n",
+       ")"
+      ]
+     },
+     "execution_count": 21,
+     "metadata": {},
+     "output_type": "execute_result"
+    }
+   ],
+   "source": [
+    "classifier = torch.load(class_path)\n",
+    "classifier.eval()"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 22,
+   "id": "022806ff",
+   "metadata": {
+    "execution": {
+     "iopub.execute_input": "2024-07-25T05:33:18.285071Z",
+     "iopub.status.busy": "2024-07-25T05:33:18.284668Z",
+     "iopub.status.idle": "2024-07-25T05:33:18.290176Z",
+     "shell.execute_reply": "2024-07-25T05:33:18.288939Z"
+    },
+    "papermill": {
+     "duration": 0.011132,
+     "end_time": "2024-07-25T05:33:18.293975",
+     "exception": false,
+     "start_time": "2024-07-25T05:33:18.282843",
+     "status": "completed"
+    },
+    "tags": []
+   },
+   "outputs": [],
+   "source": [
+    "with open(cat_path, 'r') as f:\n",
+    "    cats = json.load(f)"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 23,
+   "id": "b8af75bf",
+   "metadata": {
+    "execution": {
+     "iopub.execute_input": "2024-07-25T05:33:18.295934Z",
+     "iopub.status.busy": "2024-07-25T05:33:18.295699Z",
+     "iopub.status.idle": "2024-07-25T05:33:18.300799Z",
+     "shell.execute_reply": "2024-07-25T05:33:18.299694Z"
+    },
+    "papermill": {
+     "duration": 0.010085,
+     "end_time": "2024-07-25T05:33:18.304418",
+     "exception": false,
+     "start_time": "2024-07-25T05:33:18.294333",
+     "status": "completed"
+    },
+    "tags": []
+   },
+   "outputs": [],
+   "source": [
+    "neg_class_id = \"\"\n",
+    "\n",
+    "for key, value in cats.items():\n",
+    "    if value == neg_class_name:\n",
+    "        neg_class_id = key\n"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 24,
+   "id": "f9d31572",
+   "metadata": {
+    "execution": {
+     "iopub.execute_input": "2024-07-25T05:33:18.306471Z",
+     "iopub.status.busy": "2024-07-25T05:33:18.306134Z",
+     "iopub.status.idle": "2024-07-25T05:33:18.312601Z",
+     "shell.execute_reply": "2024-07-25T05:33:18.311681Z"
+    },
+    "papermill": {
+     "duration": 0.012828,
+     "end_time": "2024-07-25T05:33:18.317604",
+     "exception": false,
+     "start_time": "2024-07-25T05:33:18.304776",
+     "status": "completed"
+    },
+    "tags": []
+   },
+   "outputs": [
+    {
+     "data": {
+      "text/plain": [
+       "'8'"
+      ]
+     },
+     "execution_count": 24,
+     "metadata": {},
+     "output_type": "execute_result"
+    }
+   ],
+   "source": [
+    "neg_class_id"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 25,
+   "id": "b606e5ea",
+   "metadata": {
+    "execution": {
+     "iopub.execute_input": "2024-07-25T05:33:18.319689Z",
+     "iopub.status.busy": "2024-07-25T05:33:18.319320Z",
+     "iopub.status.idle": "2024-07-25T05:33:18.944806Z",
+     "shell.execute_reply": "2024-07-25T05:33:18.943304Z"
+    },
+    "papermill": {
+     "duration": 0.631035,
+     "end_time": "2024-07-25T05:33:18.949000",
+     "exception": false,
+     "start_time": "2024-07-25T05:33:18.317965",
+     "status": "completed"
+    },
+    "tags": []
+   },
+   "outputs": [],
+   "source": [
+    "with open(master_url_dict_path) as f:\n",
+    "    master_url_dict = json.load(f)"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 26,
+   "id": "4d2a24f8",
+   "metadata": {
+    "execution": {
+     "iopub.execute_input": "2024-07-25T05:33:18.951220Z",
+     "iopub.status.busy": "2024-07-25T05:33:18.950969Z",
+     "iopub.status.idle": "2024-07-25T05:33:18.959455Z",
+     "shell.execute_reply": "2024-07-25T05:33:18.958164Z"
+    },
+    "papermill": {
+     "duration": 0.014012,
+     "end_time": "2024-07-25T05:33:18.963380",
+     "exception": false,
+     "start_time": "2024-07-25T05:33:18.949368",
+     "status": "completed"
+    },
+    "tags": []
+   },
+   "outputs": [],
+   "source": [
+    "def get_clickable_elements(domains):\n",
+    "\n",
+    "    obj_list = []\n",
+    "\n",
+    "    for dom in domains:\n",
+    "\n",
+    "        print(dom)\n",
+    "\n",
+    "        url = f'https://{dom}'\n",
+    "\n",
+    "        cmd = ['node', '../../get_clickable_elems/get_clickable_elems.js', url]\n",
+    "        try:\n",
+    "            result = subprocess.run(cmd, check=True, capture_output=True, text=True)\n",
+    "            print(result.stdout)  # Print the standard output from the command\n",
+    "        except subprocess.CalledProcessError as e:\n",
+    "            print(f\"Error executing command: {e}\")\n",
+    "            print(f\"Command output: {e.output}\")\n",
+    "\n",
+    "        time.sleep(1)\n",
+    "\n",
+    "        json_path = os.path.join('./data', f'{dom}.json' )\n",
+    "        if os.path.exists(json_path):\n",
+    "            with open(json_path) as f:\n",
+    "                jobj = json.load(f)\n",
+    "\n",
+    "            obj_list.append(jobj)\n",
+    "\n",
+    "            return obj_list\n",
+    "\n",
+    "        return None\n"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 27,
+   "id": "e8b58d38",
+   "metadata": {
+    "execution": {
+     "iopub.execute_input": "2024-07-25T05:33:18.965468Z",
+     "iopub.status.busy": "2024-07-25T05:33:18.965228Z",
+     "iopub.status.idle": "2024-07-25T05:33:18.974398Z",
+     "shell.execute_reply": "2024-07-25T05:33:18.973287Z"
+    },
+    "papermill": {
+     "duration": 0.014247,
+     "end_time": "2024-07-25T05:33:18.977988",
+     "exception": false,
+     "start_time": "2024-07-25T05:33:18.963741",
+     "status": "completed"
+    },
+    "tags": []
+   },
+   "outputs": [],
+   "source": [
+    "def calculate_iou(boxA, boxB):\n",
+    "    # Convert from [x, y, w, h] to [x1, y1, x2, y2]\n",
+    "    x1A, y1A, x2A, y2A = boxA[0], boxA[1], boxA[0] + boxA[2], boxA[1] + boxA[3]\n",
+    "    x1B, y1B, x2B, y2B = boxB[0], boxB[1], boxB[0] + boxB[2], boxB[1] + boxB[3]\n",
+    "    \n",
+    "    # Determine the coordinates of the intersection rectangle\n",
+    "    xA = max(x1A, x1B)\n",
+    "    yA = max(y1A, y1B)\n",
+    "    xB = min(x2A, x2B)\n",
+    "    yB = min(y2A, y2B)\n",
+    "    \n",
+    "    # Compute the area of intersection rectangle\n",
+    "    interArea = max(0, xB - xA) * max(0, yB - yA)\n",
+    "    \n",
+    "    # Compute the area of both the prediction and true bounding boxes\n",
+    "    boxAArea = (x2A - x1A) * (y2A - y1A)\n",
+    "    boxBArea = (x2B - x1B) * (y2B - y1B)\n",
+    "    \n",
+    "    # Compute the area of union\n",
+    "    unionArea = boxAArea + boxBArea - interArea\n",
+    "    \n",
+    "    # Compute the Intersection over Union by dividing the intersection area by the union area\n",
+    "    iou = interArea / unionArea\n",
+    "    \n",
+    "    return iou"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 28,
+   "id": "f2d0ffd3",
+   "metadata": {
+    "execution": {
+     "iopub.execute_input": "2024-07-25T05:33:18.980320Z",
+     "iopub.status.busy": "2024-07-25T05:33:18.979968Z",
+     "iopub.status.idle": "2024-07-25T05:33:18.985299Z",
+     "shell.execute_reply": "2024-07-25T05:33:18.984085Z"
+    },
+    "papermill": {
+     "duration": 0.010939,
+     "end_time": "2024-07-25T05:33:18.989289",
+     "exception": false,
+     "start_time": "2024-07-25T05:33:18.978350",
+     "status": "completed"
+    },
+    "tags": []
+   },
+   "outputs": [],
+   "source": [
+    "def bbox_contains(bbox1, bbox2):\n",
+    "    return (bbox1[0] <= bbox2[0] and\n",
+    "            bbox1[1] <= bbox2[1] and\n",
+    "            bbox1[0] + bbox1[2] >= bbox2[0] + bbox2[2] and\n",
+    "            bbox1[1] + bbox1[3] >= bbox2[1] + bbox2[3])"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 29,
+   "id": "adb542ca",
+   "metadata": {
+    "execution": {
+     "iopub.execute_input": "2024-07-25T05:33:18.991395Z",
+     "iopub.status.busy": "2024-07-25T05:33:18.991030Z",
+     "iopub.status.idle": "2024-07-25T05:33:19.000659Z",
+     "shell.execute_reply": "2024-07-25T05:33:18.999358Z"
+    },
+    "papermill": {
+     "duration": 0.014818,
+     "end_time": "2024-07-25T05:33:19.004464",
+     "exception": false,
+     "start_time": "2024-07-25T05:33:18.989646",
+     "status": "completed"
+    },
+    "tags": []
+   },
+   "outputs": [],
+   "source": [
+    "def get_non_clickable_elem_ind_list(img_path, pred_bbox_list):\n",
+    "    # Assuming the existence of keep_all_but_first_part, master_url_dict, get_clickable_elements, and calculate_iou\n",
+    "\n",
+    "    domain = img_path.split('/')[-1][:-4]\n",
+    "\n",
+    "    # Get clickable elements for the domain\n",
+    "    ces = get_clickable_elements([domain])\n",
+    "\n",
+    "    if ces is None:\n",
+    "        return None, None\n",
+    "    else:\n",
+    "        ces_obj = ces[0]\n",
+    "\n",
+    "        # Build list of clickable bounding boxes\n",
+    "        clickable_bbox_list = [[ce['x'], ce['y'], ce['width'], ce['height']] for ce in ces_obj]\n",
+    "\n",
+    "        # List to hold non-clickable element indices\n",
+    "        non_clickable_ind_list = []\n",
+    "\n",
+    "        # Check each predicted bounding box against clickable bounding boxes\n",
+    "        for i, p_bbox in enumerate(pred_bbox_list):\n",
+    "            is_non_clickable = True\n",
+    "            for ces in ces_obj:\n",
+    "                ces_bbox = [ces['x'], ces['y'], ces['width'], ces['height']]\n",
+    "                iou_score = calculate_iou(p_bbox, ces_bbox)\n",
+    "                # if overlap between predicted element and clickable element is greater that threshold\n",
+    "                # or if one is contained in the other. It will be kept as clickable predicted element.\n",
+    "                if (iou_score >= 0.5 or\n",
+    "                    bbox_contains(p_bbox, ces_bbox) or\n",
+    "                    bbox_contains(ces_bbox, p_bbox)):\n",
+    "                    is_non_clickable = False\n",
+    "                    break\n",
+    "            if is_non_clickable:\n",
+    "                non_clickable_ind_list.append(i)\n",
+    "\n",
+    "        return non_clickable_ind_list, clickable_bbox_list\n"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 30,
+   "id": "dbe1c7b8",
+   "metadata": {
+    "execution": {
+     "iopub.execute_input": "2024-07-25T05:33:19.006457Z",
+     "iopub.status.busy": "2024-07-25T05:33:19.006219Z",
+     "iopub.status.idle": "2024-07-25T05:33:19.011520Z",
+     "shell.execute_reply": "2024-07-25T05:33:19.010471Z"
+    },
+    "papermill": {
+     "duration": 0.010501,
+     "end_time": "2024-07-25T05:33:19.015324",
+     "exception": false,
+     "start_time": "2024-07-25T05:33:19.004823",
+     "status": "completed"
+    },
+    "tags": []
+   },
+   "outputs": [],
+   "source": [
+    "def reverse_search_dict(dictionary, target_value):\n",
+    "    for key, value in dictionary.items():\n",
+    "        if value == target_value:\n",
+    "            return key\n",
+    "    return None\n"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 31,
+   "id": "546c484a",
+   "metadata": {
+    "execution": {
+     "iopub.execute_input": "2024-07-25T05:33:19.017364Z",
+     "iopub.status.busy": "2024-07-25T05:33:19.017125Z",
+     "iopub.status.idle": "2024-07-25T05:33:19.027094Z",
+     "shell.execute_reply": "2024-07-25T05:33:19.025882Z"
+    },
+    "papermill": {
+     "duration": 0.015153,
+     "end_time": "2024-07-25T05:33:19.030836",
+     "exception": false,
+     "start_time": "2024-07-25T05:33:19.015683",
+     "status": "completed"
+    },
+    "tags": []
+   },
+   "outputs": [],
+   "source": [
+    "def filter_nested_bboxes(bboxes, iou_threshold=0.20):\n",
+    "    indices_to_remove = []\n",
+    "    \n",
+    "    # Create a list of indices\n",
+    "    remaining_indices = list(range(len(bboxes)))\n",
+    "    \n",
+    "    while remaining_indices:\n",
+    "        # Get the index and corresponding box of the first element in remaining_indices\n",
+    "        current_index = remaining_indices.pop(0)\n",
+    "        current_box = bboxes[current_index]\n",
+    "        \n",
+    "        # List to hold indices of boxes that do not overlap significantly\n",
+    "        non_overlapping_indices = []\n",
+    "        \n",
+    "        for other_index in remaining_indices:\n",
+    "            other_box = bboxes[other_index]\n",
+    "            iou = calculate_iou(current_box, other_box)\n",
+    "            \n",
+    "            # if box contains another box that is large enough keep outter box\n",
+    "            if (iou > iou_threshold and (bbox_contains(current_box, other_box) or bbox_contains(other_box, current_box))):\n",
+    "                if (current_box[2] * current_box[3]) >= (other_box[2] * other_box[3]):\n",
+    "                    indices_to_remove.append(other_index)\n",
+    "                else:\n",
+    "                    indices_to_remove.append(current_index)\n",
+    "                    current_box = other_box\n",
+    "                    current_index = other_index\n",
+    "            # if too much overlap between boxes keep larger box\n",
+    "            elif iou > iou_threshold:\n",
+    "                if (current_box[2] * current_box[3]) >= (other_box[2] * other_box[3]):\n",
+    "                    indices_to_remove.append(other_index)\n",
+    "                else:\n",
+    "                    indices_to_remove.append(current_index)\n",
+    "                    current_box = other_box\n",
+    "                    current_index = other_index\n",
+    "            else:\n",
+    "                non_overlapping_indices.append(other_index)\n",
+    "        \n",
+    "        # Update the list of remaining indices to check\n",
+    "        remaining_indices = non_overlapping_indices\n",
+    "    \n",
+    "    return sorted(indices_to_remove)"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 32,
+   "id": "55ab60c4",
+   "metadata": {
+    "execution": {
+     "iopub.execute_input": "2024-07-25T05:33:19.033034Z",
+     "iopub.status.busy": "2024-07-25T05:33:19.032659Z",
+     "iopub.status.idle": "2024-07-25T05:33:19.040429Z",
+     "shell.execute_reply": "2024-07-25T05:33:19.039352Z"
+    },
+    "papermill": {
+     "duration": 0.012885,
+     "end_time": "2024-07-25T05:33:19.044117",
+     "exception": false,
+     "start_time": "2024-07-25T05:33:19.031232",
+     "status": "completed"
+    },
+    "tags": []
+   },
+   "outputs": [],
+   "source": [
+    "# Apply nest_asyncio to allow nested event loops\n",
+    "nest_asyncio.apply()\n",
+    "\n",
+    "async def save_webpage_screenshot(domain_name, save_dir):\n",
+    "    \n",
+    "    url = f'http://{domain_name}'\n",
+    "\n",
+    "    file_name = f\"{domain_name}.png\"\n",
+    "\n",
+    "    # Full path for the screenshot file\n",
+    "    file_path = os.path.join(save_dir, file_name)\n",
+    "\n",
+    "    async with async_playwright() as p:\n",
+    "        browser = await p.chromium.launch(headless=True)\n",
+    "        page = await browser.new_page()\n",
+    "        await page.set_viewport_size({\"width\": 1920, \"height\": 1080})\n",
+    "        \n",
+    "        # Open the webpage\n",
+    "        await page.goto(url)\n",
+    "        \n",
+    "        # Save the screenshot\n",
+    "        await page.screenshot(path=file_path)\n",
+    "        \n",
+    "        await browser.close()\n",
+    "\n",
+    "    return file_path\n",
+    "\n",
+    "# Wrapper to run the async function\n",
+    "def run_screenshot_task(domain_name, save_dir):\n",
+    "    return asyncio.run(save_webpage_screenshot(domain_name, save_dir))"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 33,
+   "id": "a4e5f328",
+   "metadata": {
+    "execution": {
+     "iopub.execute_input": "2024-07-25T05:33:19.046176Z",
+     "iopub.status.busy": "2024-07-25T05:33:19.045941Z",
+     "iopub.status.idle": "2024-07-25T05:33:19.051422Z",
+     "shell.execute_reply": "2024-07-25T05:33:19.050111Z"
+    },
+    "papermill": {
+     "duration": 0.013739,
+     "end_time": "2024-07-25T05:33:19.058213",
+     "exception": false,
+     "start_time": "2024-07-25T05:33:19.044474",
+     "status": "completed"
+    },
+    "tags": []
+   },
+   "outputs": [],
+   "source": [
+    "# Read in url list\n",
+    "with open(in_path) as f:\n",
+    "    domain_list = [line.rstrip('\\n') for line in f]"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 34,
+   "id": "1d4a9b30",
+   "metadata": {
+    "execution": {
+     "iopub.execute_input": "2024-07-25T05:33:19.061695Z",
+     "iopub.status.busy": "2024-07-25T05:33:19.061459Z",
+     "iopub.status.idle": "2024-07-25T05:33:19.068692Z",
+     "shell.execute_reply": "2024-07-25T05:33:19.066970Z"
+    },
+    "papermill": {
+     "duration": 0.013621,
+     "end_time": "2024-07-25T05:33:19.072662",
+     "exception": false,
+     "start_time": "2024-07-25T05:33:19.059041",
+     "status": "completed"
+    },
+    "tags": []
+   },
+   "outputs": [],
+   "source": [
+    "# Creating inference imgs directory\n",
+    "if os.path.exists(inf_img_dir):\n",
+    "    shutil.rmtree(inf_img_dir)\n",
+    "    os.makedirs(inf_img_dir, exist_ok=True)"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 35,
+   "id": "907a99bf",
+   "metadata": {
+    "execution": {
+     "iopub.execute_input": "2024-07-25T05:33:19.074668Z",
+     "iopub.status.busy": "2024-07-25T05:33:19.074419Z",
+     "iopub.status.idle": "2024-07-25T05:33:19.080574Z",
+     "shell.execute_reply": "2024-07-25T05:33:19.079275Z"
+    },
+    "papermill": {
+     "duration": 0.011471,
+     "end_time": "2024-07-25T05:33:19.084500",
+     "exception": false,
+     "start_time": "2024-07-25T05:33:19.073029",
+     "status": "completed"
+    },
+    "tags": []
+   },
+   "outputs": [],
+   "source": [
+    "# Creating data directory\n",
+    "if os.path.exists(\"./data\"):\n",
+    "    shutil.rmtree(\"./data\")\n",
+    "    os.makedirs(\"./data\", exist_ok=True)"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "id": "4d4ea0a6",
+   "metadata": {
+    "tags": [
+     "papermill-error-cell-tag"
+    ]
+   },
+   "source": [
+    "<span id=\"papermill-error-cell\" style=\"color:red; font-family:Helvetica Neue, Helvetica, Arial, sans-serif; font-size:2em;\">Execution using papermill encountered an exception here and stopped:</span>"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 36,
+   "id": "05899832",
+   "metadata": {
+    "execution": {
+     "iopub.execute_input": "2024-07-25T05:33:19.086654Z",
+     "iopub.status.busy": "2024-07-25T05:33:19.086407Z",
+     "iopub.status.idle": "2024-07-25T05:33:34.273920Z",
+     "shell.execute_reply": "2024-07-25T05:33:34.272108Z"
+    },
+    "papermill": {
+     "duration": 15.193782,
+     "end_time": "2024-07-25T05:33:34.278654",
+     "exception": true,
+     "start_time": "2024-07-25T05:33:19.084872",
+     "status": "failed"
+    },
+    "tags": []
+   },
+   "outputs": [
+    {
+     "name": "stderr",
+     "output_type": "stream",
+     "text": [
+      "/home/user/miniconda3/envs/int_venv/lib/python3.8/site-packages/torch/functional.py:445: UserWarning: torch.meshgrid: in an upcoming release, it will be required to pass the indexing argument. (Triggered internally at  ../aten/src/ATen/native/TensorShape.cpp:2157.)\n",
+      "  return _VF.meshgrid(tensors, **kwargs)  # type: ignore[attr-defined]\n"
+     ]
+    },
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "###############################################################################################\n",
+      "0 ./inf_imgs/google.com.png\n",
+      "predicted number: 27\n",
+      "denested number: 26\n",
+      "google.com\n"
+     ]
+    },
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "2024-07-25 01:33:22 [info]: Attempt 1 to process https://google.com\n",
+      "2024-07-25 01:33:23 [info]: Navigated to https://google.com\n",
+      "2024-07-25 01:33:29 [info]: Successfully processed https://google.com\n",
+      "\n"
+     ]
+    },
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "non clickable 0\n",
+      "clickable 31\n",
+      "cleaned number after removing non clickable elements: 26\n"
+     ]
+    },
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "cleaned number after removing negative classes: 25\n"
+     ]
+    },
+    {
+     "ename": "Error",
+     "evalue": "Page.goto: net::ERR_NAME_NOT_RESOLVED at http://a-msedge.net/\nCall log:\nnavigating to \"http://a-msedge.net/\", waiting until \"load\"\n",
+     "output_type": "error",
+     "traceback": [
+      "\u001b[0;31m---------------------------------------------------------------------------\u001b[0m",
+      "\u001b[0;31mError\u001b[0m                                     Traceback (most recent call last)",
+      "Cell \u001b[0;32mIn[36], line 5\u001b[0m\n\u001b[1;32m      1\u001b[0m master_det_dict \u001b[38;5;241m=\u001b[39m []\n\u001b[1;32m      3\u001b[0m \u001b[38;5;28;01mfor\u001b[39;00m i, dom \u001b[38;5;129;01min\u001b[39;00m \u001b[38;5;28menumerate\u001b[39m(domain_list):\n\u001b[0;32m----> 5\u001b[0m     img_path \u001b[38;5;241m=\u001b[39m \u001b[43mrun_screenshot_task\u001b[49m\u001b[43m(\u001b[49m\u001b[43mdom\u001b[49m\u001b[43m,\u001b[49m\u001b[43m \u001b[49m\u001b[43minf_img_dir\u001b[49m\u001b[43m)\u001b[49m\n\u001b[1;32m      6\u001b[0m     vis_outpath \u001b[38;5;241m=\u001b[39m os\u001b[38;5;241m.\u001b[39mpath\u001b[38;5;241m.\u001b[39mjoin(vis_out_dir, os\u001b[38;5;241m.\u001b[39mpath\u001b[38;5;241m.\u001b[39mbasename(img_path))\n\u001b[1;32m      8\u001b[0m     \u001b[38;5;66;03m# Creating master dictionary of detected elements\u001b[39;00m\n",
+      "Cell \u001b[0;32mIn[32], line 30\u001b[0m, in \u001b[0;36mrun_screenshot_task\u001b[0;34m(domain_name, save_dir)\u001b[0m\n\u001b[1;32m     29\u001b[0m \u001b[38;5;28;01mdef\u001b[39;00m \u001b[38;5;21mrun_screenshot_task\u001b[39m(domain_name, save_dir):\n\u001b[0;32m---> 30\u001b[0m     \u001b[38;5;28;01mreturn\u001b[39;00m \u001b[43masyncio\u001b[49m\u001b[38;5;241;43m.\u001b[39;49m\u001b[43mrun\u001b[49m\u001b[43m(\u001b[49m\u001b[43msave_webpage_screenshot\u001b[49m\u001b[43m(\u001b[49m\u001b[43mdomain_name\u001b[49m\u001b[43m,\u001b[49m\u001b[43m \u001b[49m\u001b[43msave_dir\u001b[49m\u001b[43m)\u001b[49m\u001b[43m)\u001b[49m\n",
+      "File \u001b[0;32m~/miniconda3/envs/int_venv/lib/python3.8/site-packages/nest_asyncio.py:30\u001b[0m, in \u001b[0;36m_patch_asyncio.<locals>.run\u001b[0;34m(main, debug)\u001b[0m\n\u001b[1;32m     28\u001b[0m task \u001b[38;5;241m=\u001b[39m asyncio\u001b[38;5;241m.\u001b[39mensure_future(main)\n\u001b[1;32m     29\u001b[0m \u001b[38;5;28;01mtry\u001b[39;00m:\n\u001b[0;32m---> 30\u001b[0m     \u001b[38;5;28;01mreturn\u001b[39;00m \u001b[43mloop\u001b[49m\u001b[38;5;241;43m.\u001b[39;49m\u001b[43mrun_until_complete\u001b[49m\u001b[43m(\u001b[49m\u001b[43mtask\u001b[49m\u001b[43m)\u001b[49m\n\u001b[1;32m     31\u001b[0m \u001b[38;5;28;01mfinally\u001b[39;00m:\n\u001b[1;32m     32\u001b[0m     \u001b[38;5;28;01mif\u001b[39;00m \u001b[38;5;129;01mnot\u001b[39;00m task\u001b[38;5;241m.\u001b[39mdone():\n",
+      "File \u001b[0;32m~/miniconda3/envs/int_venv/lib/python3.8/site-packages/nest_asyncio.py:98\u001b[0m, in \u001b[0;36m_patch_loop.<locals>.run_until_complete\u001b[0;34m(self, future)\u001b[0m\n\u001b[1;32m     95\u001b[0m \u001b[38;5;28;01mif\u001b[39;00m \u001b[38;5;129;01mnot\u001b[39;00m f\u001b[38;5;241m.\u001b[39mdone():\n\u001b[1;32m     96\u001b[0m     \u001b[38;5;28;01mraise\u001b[39;00m \u001b[38;5;167;01mRuntimeError\u001b[39;00m(\n\u001b[1;32m     97\u001b[0m         \u001b[38;5;124m'\u001b[39m\u001b[38;5;124mEvent loop stopped before Future completed.\u001b[39m\u001b[38;5;124m'\u001b[39m)\n\u001b[0;32m---> 98\u001b[0m \u001b[38;5;28;01mreturn\u001b[39;00m \u001b[43mf\u001b[49m\u001b[38;5;241;43m.\u001b[39;49m\u001b[43mresult\u001b[49m\u001b[43m(\u001b[49m\u001b[43m)\u001b[49m\n",
+      "File \u001b[0;32m~/miniconda3/envs/int_venv/lib/python3.8/asyncio/futures.py:178\u001b[0m, in \u001b[0;36mFuture.result\u001b[0;34m(self)\u001b[0m\n\u001b[1;32m    176\u001b[0m \u001b[38;5;28mself\u001b[39m\u001b[38;5;241m.\u001b[39m__log_traceback \u001b[38;5;241m=\u001b[39m \u001b[38;5;28;01mFalse\u001b[39;00m\n\u001b[1;32m    177\u001b[0m \u001b[38;5;28;01mif\u001b[39;00m \u001b[38;5;28mself\u001b[39m\u001b[38;5;241m.\u001b[39m_exception \u001b[38;5;129;01mis\u001b[39;00m \u001b[38;5;129;01mnot\u001b[39;00m \u001b[38;5;28;01mNone\u001b[39;00m:\n\u001b[0;32m--> 178\u001b[0m     \u001b[38;5;28;01mraise\u001b[39;00m \u001b[38;5;28mself\u001b[39m\u001b[38;5;241m.\u001b[39m_exception\n\u001b[1;32m    179\u001b[0m \u001b[38;5;28;01mreturn\u001b[39;00m \u001b[38;5;28mself\u001b[39m\u001b[38;5;241m.\u001b[39m_result\n",
+      "File \u001b[0;32m~/miniconda3/envs/int_venv/lib/python3.8/asyncio/tasks.py:280\u001b[0m, in \u001b[0;36mTask.__step\u001b[0;34m(***failed resolving arguments***)\u001b[0m\n\u001b[1;32m    276\u001b[0m \u001b[38;5;28;01mtry\u001b[39;00m:\n\u001b[1;32m    277\u001b[0m     \u001b[38;5;28;01mif\u001b[39;00m exc \u001b[38;5;129;01mis\u001b[39;00m \u001b[38;5;28;01mNone\u001b[39;00m:\n\u001b[1;32m    278\u001b[0m         \u001b[38;5;66;03m# We use the `send` method directly, because coroutines\u001b[39;00m\n\u001b[1;32m    279\u001b[0m         \u001b[38;5;66;03m# don't have `__iter__` and `__next__` methods.\u001b[39;00m\n\u001b[0;32m--> 280\u001b[0m         result \u001b[38;5;241m=\u001b[39m \u001b[43mcoro\u001b[49m\u001b[38;5;241;43m.\u001b[39;49m\u001b[43msend\u001b[49m\u001b[43m(\u001b[49m\u001b[38;5;28;43;01mNone\u001b[39;49;00m\u001b[43m)\u001b[49m\n\u001b[1;32m    281\u001b[0m     \u001b[38;5;28;01melse\u001b[39;00m:\n\u001b[1;32m    282\u001b[0m         result \u001b[38;5;241m=\u001b[39m coro\u001b[38;5;241m.\u001b[39mthrow(exc)\n",
+      "Cell \u001b[0;32mIn[32], line 19\u001b[0m, in \u001b[0;36msave_webpage_screenshot\u001b[0;34m(domain_name, save_dir)\u001b[0m\n\u001b[1;32m     16\u001b[0m \u001b[38;5;28;01mawait\u001b[39;00m page\u001b[38;5;241m.\u001b[39mset_viewport_size({\u001b[38;5;124m\"\u001b[39m\u001b[38;5;124mwidth\u001b[39m\u001b[38;5;124m\"\u001b[39m: \u001b[38;5;241m1920\u001b[39m, \u001b[38;5;124m\"\u001b[39m\u001b[38;5;124mheight\u001b[39m\u001b[38;5;124m\"\u001b[39m: \u001b[38;5;241m1080\u001b[39m})\n\u001b[1;32m     18\u001b[0m \u001b[38;5;66;03m# Open the webpage\u001b[39;00m\n\u001b[0;32m---> 19\u001b[0m \u001b[38;5;28;01mawait\u001b[39;00m page\u001b[38;5;241m.\u001b[39mgoto(url)\n\u001b[1;32m     21\u001b[0m \u001b[38;5;66;03m# Save the screenshot\u001b[39;00m\n\u001b[1;32m     22\u001b[0m \u001b[38;5;28;01mawait\u001b[39;00m page\u001b[38;5;241m.\u001b[39mscreenshot(path\u001b[38;5;241m=\u001b[39mfile_path)\n",
+      "File \u001b[0;32m~/miniconda3/envs/int_venv/lib/python3.8/site-packages/playwright/async_api/_generated.py:8818\u001b[0m, in \u001b[0;36mPage.goto\u001b[0;34m(self, url, timeout, wait_until, referer)\u001b[0m\n\u001b[1;32m   8757\u001b[0m \u001b[38;5;28;01masync\u001b[39;00m \u001b[38;5;28;01mdef\u001b[39;00m \u001b[38;5;21mgoto\u001b[39m(\n\u001b[1;32m   8758\u001b[0m     \u001b[38;5;28mself\u001b[39m,\n\u001b[1;32m   8759\u001b[0m     url: \u001b[38;5;28mstr\u001b[39m,\n\u001b[0;32m   (...)\u001b[0m\n\u001b[1;32m   8765\u001b[0m     referer: typing\u001b[38;5;241m.\u001b[39mOptional[\u001b[38;5;28mstr\u001b[39m] \u001b[38;5;241m=\u001b[39m \u001b[38;5;28;01mNone\u001b[39;00m\n\u001b[1;32m   8766\u001b[0m ) \u001b[38;5;241m-\u001b[39m\u001b[38;5;241m>\u001b[39m typing\u001b[38;5;241m.\u001b[39mOptional[\u001b[38;5;124m\"\u001b[39m\u001b[38;5;124mResponse\u001b[39m\u001b[38;5;124m\"\u001b[39m]:\n\u001b[1;32m   8767\u001b[0m \u001b[38;5;250m    \u001b[39m\u001b[38;5;124;03m\"\"\"Page.goto\u001b[39;00m\n\u001b[1;32m   8768\u001b[0m \n\u001b[1;32m   8769\u001b[0m \u001b[38;5;124;03m    Returns the main resource response. In case of multiple redirects, the navigation will resolve with the first\u001b[39;00m\n\u001b[0;32m   (...)\u001b[0m\n\u001b[1;32m   8814\u001b[0m \u001b[38;5;124;03m    Union[Response, None]\u001b[39;00m\n\u001b[1;32m   8815\u001b[0m \u001b[38;5;124;03m    \"\"\"\u001b[39;00m\n\u001b[1;32m   8817\u001b[0m     \u001b[38;5;28;01mreturn\u001b[39;00m mapping\u001b[38;5;241m.\u001b[39mfrom_impl_nullable(\n\u001b[0;32m-> 8818\u001b[0m         \u001b[38;5;28;01mawait\u001b[39;00m \u001b[38;5;28mself\u001b[39m\u001b[38;5;241m.\u001b[39m_impl_obj\u001b[38;5;241m.\u001b[39mgoto(\n\u001b[1;32m   8819\u001b[0m             url\u001b[38;5;241m=\u001b[39murl, timeout\u001b[38;5;241m=\u001b[39mtimeout, waitUntil\u001b[38;5;241m=\u001b[39mwait_until, referer\u001b[38;5;241m=\u001b[39mreferer\n\u001b[1;32m   8820\u001b[0m         )\n\u001b[1;32m   8821\u001b[0m     )\n",
+      "File \u001b[0;32m~/miniconda3/envs/int_venv/lib/python3.8/site-packages/playwright/_impl/_page.py:524\u001b[0m, in \u001b[0;36mPage.goto\u001b[0;34m(self, url, timeout, waitUntil, referer)\u001b[0m\n\u001b[1;32m    517\u001b[0m \u001b[38;5;28;01masync\u001b[39;00m \u001b[38;5;28;01mdef\u001b[39;00m \u001b[38;5;21mgoto\u001b[39m(\n\u001b[1;32m    518\u001b[0m     \u001b[38;5;28mself\u001b[39m,\n\u001b[1;32m    519\u001b[0m     url: \u001b[38;5;28mstr\u001b[39m,\n\u001b[0;32m   (...)\u001b[0m\n\u001b[1;32m    522\u001b[0m     referer: \u001b[38;5;28mstr\u001b[39m \u001b[38;5;241m=\u001b[39m \u001b[38;5;28;01mNone\u001b[39;00m,\n\u001b[1;32m    523\u001b[0m ) \u001b[38;5;241m-\u001b[39m\u001b[38;5;241m>\u001b[39m Optional[Response]:\n\u001b[0;32m--> 524\u001b[0m     \u001b[38;5;28;01mreturn\u001b[39;00m \u001b[38;5;28;01mawait\u001b[39;00m \u001b[38;5;28mself\u001b[39m\u001b[38;5;241m.\u001b[39m_main_frame\u001b[38;5;241m.\u001b[39mgoto(\u001b[38;5;241m*\u001b[39m\u001b[38;5;241m*\u001b[39mlocals_to_params(\u001b[38;5;28mlocals\u001b[39m()))\n",
+      "File \u001b[0;32m~/miniconda3/envs/int_venv/lib/python3.8/site-packages/playwright/_impl/_frame.py:145\u001b[0m, in \u001b[0;36mFrame.goto\u001b[0;34m(self, url, timeout, waitUntil, referer)\u001b[0m\n\u001b[1;32m    135\u001b[0m \u001b[38;5;28;01masync\u001b[39;00m \u001b[38;5;28;01mdef\u001b[39;00m \u001b[38;5;21mgoto\u001b[39m(\n\u001b[1;32m    136\u001b[0m     \u001b[38;5;28mself\u001b[39m,\n\u001b[1;32m    137\u001b[0m     url: \u001b[38;5;28mstr\u001b[39m,\n\u001b[0;32m   (...)\u001b[0m\n\u001b[1;32m    140\u001b[0m     referer: \u001b[38;5;28mstr\u001b[39m \u001b[38;5;241m=\u001b[39m \u001b[38;5;28;01mNone\u001b[39;00m,\n\u001b[1;32m    141\u001b[0m ) \u001b[38;5;241m-\u001b[39m\u001b[38;5;241m>\u001b[39m Optional[Response]:\n\u001b[1;32m    142\u001b[0m     \u001b[38;5;28;01mreturn\u001b[39;00m cast(\n\u001b[1;32m    143\u001b[0m         Optional[Response],\n\u001b[1;32m    144\u001b[0m         from_nullable_channel(\n\u001b[0;32m--> 145\u001b[0m             \u001b[38;5;28;01mawait\u001b[39;00m \u001b[38;5;28mself\u001b[39m\u001b[38;5;241m.\u001b[39m_channel\u001b[38;5;241m.\u001b[39msend(\u001b[38;5;124m\"\u001b[39m\u001b[38;5;124mgoto\u001b[39m\u001b[38;5;124m\"\u001b[39m, locals_to_params(\u001b[38;5;28mlocals\u001b[39m()))\n\u001b[1;32m    146\u001b[0m         ),\n\u001b[1;32m    147\u001b[0m     )\n",
+      "File \u001b[0;32m~/miniconda3/envs/int_venv/lib/python3.8/site-packages/playwright/_impl/_connection.py:59\u001b[0m, in \u001b[0;36mChannel.send\u001b[0;34m(self, method, params)\u001b[0m\n\u001b[1;32m     58\u001b[0m \u001b[38;5;28;01masync\u001b[39;00m \u001b[38;5;28;01mdef\u001b[39;00m \u001b[38;5;21msend\u001b[39m(\u001b[38;5;28mself\u001b[39m, method: \u001b[38;5;28mstr\u001b[39m, params: Dict \u001b[38;5;241m=\u001b[39m \u001b[38;5;28;01mNone\u001b[39;00m) \u001b[38;5;241m-\u001b[39m\u001b[38;5;241m>\u001b[39m Any:\n\u001b[0;32m---> 59\u001b[0m     \u001b[38;5;28;01mreturn\u001b[39;00m \u001b[38;5;28;01mawait\u001b[39;00m \u001b[38;5;28mself\u001b[39m\u001b[38;5;241m.\u001b[39m_connection\u001b[38;5;241m.\u001b[39mwrap_api_call(\n\u001b[1;32m     60\u001b[0m         \u001b[38;5;28;01mlambda\u001b[39;00m: \u001b[38;5;28mself\u001b[39m\u001b[38;5;241m.\u001b[39minner_send(method, params, \u001b[38;5;28;01mFalse\u001b[39;00m)\n\u001b[1;32m     61\u001b[0m     )\n",
+      "File \u001b[0;32m~/miniconda3/envs/int_venv/lib/python3.8/site-packages/playwright/_impl/_connection.py:514\u001b[0m, in \u001b[0;36mConnection.wrap_api_call\u001b[0;34m(self, cb, is_internal)\u001b[0m\n\u001b[1;32m    512\u001b[0m     \u001b[38;5;28;01mreturn\u001b[39;00m \u001b[38;5;28;01mawait\u001b[39;00m cb()\n\u001b[1;32m    513\u001b[0m \u001b[38;5;28;01mexcept\u001b[39;00m \u001b[38;5;167;01mException\u001b[39;00m \u001b[38;5;28;01mas\u001b[39;00m error:\n\u001b[0;32m--> 514\u001b[0m     \u001b[38;5;28;01mraise\u001b[39;00m rewrite_error(error, \u001b[38;5;124mf\u001b[39m\u001b[38;5;124m\"\u001b[39m\u001b[38;5;132;01m{\u001b[39;00mparsed_st[\u001b[38;5;124m'\u001b[39m\u001b[38;5;124mapiName\u001b[39m\u001b[38;5;124m'\u001b[39m]\u001b[38;5;132;01m}\u001b[39;00m\u001b[38;5;124m: \u001b[39m\u001b[38;5;132;01m{\u001b[39;00merror\u001b[38;5;132;01m}\u001b[39;00m\u001b[38;5;124m\"\u001b[39m) \u001b[38;5;28;01mfrom\u001b[39;00m \u001b[38;5;28;01mNone\u001b[39;00m\n\u001b[1;32m    515\u001b[0m \u001b[38;5;28;01mfinally\u001b[39;00m:\n\u001b[1;32m    516\u001b[0m     \u001b[38;5;28mself\u001b[39m\u001b[38;5;241m.\u001b[39m_api_zone\u001b[38;5;241m.\u001b[39mset(\u001b[38;5;28;01mNone\u001b[39;00m)\n",
+      "\u001b[0;31mError\u001b[0m: Page.goto: net::ERR_NAME_NOT_RESOLVED at http://a-msedge.net/\nCall log:\nnavigating to \"http://a-msedge.net/\", waiting until \"load\"\n"
+     ]
+    }
+   ],
+   "source": [
+    "master_det_dict = []\n",
+    "\n",
+    "for i, dom in enumerate(domain_list):\n",
+    "\n",
+    "    img_path = run_screenshot_task(dom, inf_img_dir)\n",
+    "    vis_outpath = os.path.join(vis_out_dir, os.path.basename(img_path))\n",
+    "\n",
+    "    # Creating master dictionary of detected elements\n",
+    "    img = cv2.imread(img_path)\n",
+    "    \n",
+    "    pred_out_list = []\n",
+    "    for od_pred in obj_det_pred_list:\n",
+    "        pred_out_list.append(od_pred(img))\n",
+    "    outputs = merge_outputs(pred_out_list)\n",
+    "    \n",
+    "    print('###############################################################################################')\n",
+    "    print(i, img_path)\n",
+    "    \n",
+    "    data_dict = createDataDict(img_path, outputs)\n",
+    "    pred_bbox_list = [ann[\"bbox\"] for ann in data_dict[\"annotations\"]]\n",
+    "\n",
+    "    print(\"predicted number:\", len(data_dict[\"annotations\"]))\n",
+    "    \n",
+    "    if denest:\n",
+    "        rem_ind_list = filter_nested_bboxes(pred_bbox_list, denest_thold)\n",
+    "        for ind in sorted(rem_ind_list, reverse=True):\n",
+    "            del data_dict['annotations'][ind]\n",
+    "            del pred_bbox_list[ind]\n",
+    "\n",
+    "    print(\"denested number:\", len(data_dict[\"annotations\"]))\n",
+    "\n",
+    "    if keep_clickable_elems_only:\n",
+    "        nce_list, ce_bbox_list = get_non_clickable_elem_ind_list(img_path, pred_bbox_list)\n",
+    "\n",
+    "        if nce_list == None and ce_bbox_list == None:\n",
+    "            pass\n",
+    "        \n",
+    "        else:\n",
+    "\n",
+    "            print('non clickable', len(nce_list))\n",
+    "            print('clickable', len(ce_bbox_list))\n",
+    "\n",
+    "            z_list = ['0' for _ in range(len(ce_bbox_list))]\n",
+    "            \n",
+    "            draw_bounding_boxes(img_path, ce_bbox_list, z_list, vis_outpath, color='green')\n",
+    "\n",
+    "            for ind in sorted(nce_list, reverse=True):\n",
+    "                data_dict[\"annotations\"].pop(ind)\n",
+    "                pred_bbox_list.pop(ind)\n",
+    "\n",
+    "            print(\"cleaned number after removing non clickable elements:\", len(data_dict[\"annotations\"]))\n",
+    "\n",
+    "    elem_img_list = process_image(data_dict[\"file_name\"], pred_bbox_list, padding, bg_color, border)\n",
+    "    \n",
+    "    pred_ids = []\n",
+    "    pred_classes = []\n",
+    "    remove_list = []\n",
+    "    \n",
+    "    for j, img in enumerate(elem_img_list):\n",
+    "        \n",
+    "        img_t = transform(img.convert('RGB')).unsqueeze(0).to('cuda')\n",
+    "        \n",
+    "        with torch.no_grad():\n",
+    "            output = classifier(img_t)\n",
+    "        _, predicted = torch.max(output, 1)\n",
+    "        # OG\n",
+    "        # pred_class_id = str(predicted.item() + 1)\n",
+    "        pred_class_id = str(predicted.item())\n",
+    "        pred_class_name = cats[pred_class_id]\n",
+    "        \n",
+    "        if remove_neg and pred_class_id == neg_class_id:\n",
+    "            remove_list.append(j)\n",
+    "\n",
+    "        pred_ids.append(pred_class_id)\n",
+    "        pred_classes.append(pred_classes)\n",
+    "        # data_dict[\"annotations\"][j][\"category_id\"] = int(pred_class_id)\n",
+    "        data_dict[\"annotations\"][j][\"category_id\"] = pred_class_name\n",
+    "    \n",
+    "    if remove_neg and remove_list:\n",
+    "         for ind in sorted(remove_list, reverse=True):\n",
+    "            data_dict[\"annotations\"].pop(ind)\n",
+    "            pred_bbox_list.pop(ind)\n",
+    "            pred_ids.pop(ind)\n",
+    "            pred_classes.pop(ind)\n",
+    "            \n",
+    "    print(\"cleaned number after removing negative classes:\", len(data_dict[\"annotations\"]))\n",
+    "    \n",
+    "    if os.path.exists(vis_outpath):\n",
+    "        draw_bounding_boxes(vis_outpath, pred_bbox_list, pred_ids, vis_outpath, color='red')\n",
+    "    else:\n",
+    "        draw_bounding_boxes(img_path, pred_bbox_list, pred_ids, vis_outpath, color='red')\n",
+    "    \n",
+    "    master_det_dict.append(data_dict)\n",
+    "    \n",
+    "res_outpath = os.path.join(res_out_dir, \"results.json\")\n",
+    "print(\"writing out results to\", res_outpath)\n",
+    "with open(res_outpath, 'w+') as f:\n",
+    "    json.dump(master_det_dict, f, indent=4)"
+   ]
+  }
+ ],
+ "metadata": {
+  "kernelspec": {
+   "display_name": "int_venv",
+   "language": "python",
+   "name": "python3"
+  },
+  "language_info": {
+   "codemirror_mode": {
+    "name": "ipython",
+    "version": 3
+   },
+   "file_extension": ".py",
+   "mimetype": "text/x-python",
+   "name": "python",
+   "nbconvert_exporter": "python",
+   "pygments_lexer": "ipython3",
+   "version": "3.8.19"
+  },
+  "papermill": {
+   "default_parameters": {},
+   "duration": 29.905404,
+   "end_time": "2024-07-25T05:33:35.406476",
+   "environment_variables": {},
+   "exception": true,
+   "input_path": "inf_mult_od.ipynb",
+   "output_path": "-",
+   "parameters": {},
+   "start_time": "2024-07-25T05:33:05.501072",
+   "version": "2.6.0"
+  }
+ },
+ "nbformat": 4,
+ "nbformat_minor": 5
+}/home/user/miniconda3/envs/int_venv/lib/python3.8/site-packages/papermill/iorw.py:149: UserWarning: the file is not specified with any extension : -
+  warnings.warn(f"the file is not specified with any extension : {os.path.basename(path)}")
+Traceback (most recent call last):
+  File "/home/user/miniconda3/envs/int_venv/bin/papermill", line 8, in <module>
+    sys.exit(papermill())
+  File "/home/user/miniconda3/envs/int_venv/lib/python3.8/site-packages/click/core.py", line 1157, in __call__
+    return self.main(*args, **kwargs)
+  File "/home/user/miniconda3/envs/int_venv/lib/python3.8/site-packages/click/core.py", line 1078, in main
+    rv = self.invoke(ctx)
+  File "/home/user/miniconda3/envs/int_venv/lib/python3.8/site-packages/click/core.py", line 1434, in invoke
+    return ctx.invoke(self.callback, **ctx.params)
+  File "/home/user/miniconda3/envs/int_venv/lib/python3.8/site-packages/click/core.py", line 783, in invoke
+    return __callback(*args, **kwargs)
+  File "/home/user/miniconda3/envs/int_venv/lib/python3.8/site-packages/click/decorators.py", line 33, in new_func
+    return f(get_current_context(), *args, **kwargs)
+  File "/home/user/miniconda3/envs/int_venv/lib/python3.8/site-packages/papermill/cli.py", line 235, in papermill
+    execute_notebook(
+  File "/home/user/miniconda3/envs/int_venv/lib/python3.8/site-packages/papermill/execute.py", line 131, in execute_notebook
+    raise_for_execution_errors(nb, output_path)
+  File "/home/user/miniconda3/envs/int_venv/lib/python3.8/site-packages/papermill/execute.py", line 251, in raise_for_execution_errors
+    raise error
+papermill.exceptions.PapermillExecutionError: 
+---------------------------------------------------------------------------
+Exception encountered at "In [36]":
+---------------------------------------------------------------------------
+Error                                     Traceback (most recent call last)
+Cell In[36], line 5
+      1 master_det_dict = []
+      3 for i, dom in enumerate(domain_list):
+----> 5     img_path = run_screenshot_task(dom, inf_img_dir)
+      6     vis_outpath = os.path.join(vis_out_dir, os.path.basename(img_path))
+      8     # Creating master dictionary of detected elements
+
+Cell In[32], line 30, in run_screenshot_task(domain_name, save_dir)
+     29 def run_screenshot_task(domain_name, save_dir):
+---> 30     return asyncio.run(save_webpage_screenshot(domain_name, save_dir))
+
+File ~/miniconda3/envs/int_venv/lib/python3.8/site-packages/nest_asyncio.py:30, in _patch_asyncio.<locals>.run(main, debug)
+     28 task = asyncio.ensure_future(main)
+     29 try:
+---> 30     return loop.run_until_complete(task)
+     31 finally:
+     32     if not task.done():
+
+File ~/miniconda3/envs/int_venv/lib/python3.8/site-packages/nest_asyncio.py:98, in _patch_loop.<locals>.run_until_complete(self, future)
+     95 if not f.done():
+     96     raise RuntimeError(
+     97         'Event loop stopped before Future completed.')
+---> 98 return f.result()
+
+File ~/miniconda3/envs/int_venv/lib/python3.8/asyncio/futures.py:178, in Future.result(self)
+    176 self.__log_traceback = False
+    177 if self._exception is not None:
+--> 178     raise self._exception
+    179 return self._result
+
+File ~/miniconda3/envs/int_venv/lib/python3.8/asyncio/tasks.py:280, in Task.__step(***failed resolving arguments***)
+    276 try:
+    277     if exc is None:
+    278         # We use the `send` method directly, because coroutines
+    279         # don't have `__iter__` and `__next__` methods.
+--> 280         result = coro.send(None)
+    281     else:
+    282         result = coro.throw(exc)
+
+Cell In[32], line 19, in save_webpage_screenshot(domain_name, save_dir)
+     16 await page.set_viewport_size({"width": 1920, "height": 1080})
+     18 # Open the webpage
+---> 19 await page.goto(url)
+     21 # Save the screenshot
+     22 await page.screenshot(path=file_path)
+
+File ~/miniconda3/envs/int_venv/lib/python3.8/site-packages/playwright/async_api/_generated.py:8818, in Page.goto(self, url, timeout, wait_until, referer)
+   8757 async def goto(
+   8758     self,
+   8759     url: str,
+   (...)
+   8765     referer: typing.Optional[str] = None
+   8766 ) -> typing.Optional["Response"]:
+   8767     """Page.goto
+   8768 
+   8769     Returns the main resource response. In case of multiple redirects, the navigation will resolve with the first
+   (...)
+   8814     Union[Response, None]
+   8815     """
+   8817     return mapping.from_impl_nullable(
+-> 8818         await self._impl_obj.goto(
+   8819             url=url, timeout=timeout, waitUntil=wait_until, referer=referer
+   8820         )
+   8821     )
+
+File ~/miniconda3/envs/int_venv/lib/python3.8/site-packages/playwright/_impl/_page.py:524, in Page.goto(self, url, timeout, waitUntil, referer)
+    517 async def goto(
+    518     self,
+    519     url: str,
+   (...)
+    522     referer: str = None,
+    523 ) -> Optional[Response]:
+--> 524     return await self._main_frame.goto(**locals_to_params(locals()))
+
+File ~/miniconda3/envs/int_venv/lib/python3.8/site-packages/playwright/_impl/_frame.py:145, in Frame.goto(self, url, timeout, waitUntil, referer)
+    135 async def goto(
+    136     self,
+    137     url: str,
+   (...)
+    140     referer: str = None,
+    141 ) -> Optional[Response]:
+    142     return cast(
+    143         Optional[Response],
+    144         from_nullable_channel(
+--> 145             await self._channel.send("goto", locals_to_params(locals()))
+    146         ),
+    147     )
+
+File ~/miniconda3/envs/int_venv/lib/python3.8/site-packages/playwright/_impl/_connection.py:59, in Channel.send(self, method, params)
+     58 async def send(self, method: str, params: Dict = None) -> Any:
+---> 59     return await self._connection.wrap_api_call(
+     60         lambda: self.inner_send(method, params, False)
+     61     )
+
+File ~/miniconda3/envs/int_venv/lib/python3.8/site-packages/playwright/_impl/_connection.py:514, in Connection.wrap_api_call(self, cb, is_internal)
+    512     return await cb()
+    513 except Exception as error:
+--> 514     raise rewrite_error(error, f"{parsed_st['apiName']}: {error}") from None
+    515 finally:
+    516     self._api_zone.set(None)
+
+Error: Page.goto: net::ERR_NAME_NOT_RESOLVED at http://a-msedge.net/
+Call log:
+navigating to "http://a-msedge.net/", waiting until "load"
+
+
