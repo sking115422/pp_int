@@ -6,6 +6,6 @@ node_modules
 data
 logs
 vis
-test_runs
+test_runs*
 inf_runs
 inf_imgs
