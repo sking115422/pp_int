@@ -9,3 +9,4 @@ vis
 test_runs*
 inf_runs
 inf_imgs
+__pycache__

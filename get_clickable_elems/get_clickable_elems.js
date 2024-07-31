@@ -21,10 +21,10 @@ if (urls.length === 0) {
     }
     fs.mkdirSync(data_dir, { recursive: true });
 
-    const browser = await playwright.chromium.launch({ headless: false }); // Set headless to true
+    const browser = await playwright.chromium.launch({ headless: false }); 
     const context = await browser.newContext({
         viewport: { width: vp_width, height: vp_height },
-        userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36', // Set a user agent
+        userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
         ignoreHTTPSErrors: true, // Ignore HTTPS errors
     });
     const page = await context.newPage();
